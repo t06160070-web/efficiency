@@ -15,8 +15,10 @@
         label { font-weight: 600; font-size: 15px; flex: 1; }
         input[type="number"], input[type="date"], select { width: 110px; padding: 8px; border: 1px solid #d1d1d6; border-radius: 6px; text-align: center; font-size: 16px; background: white; -webkit-appearance: none; box-sizing: border-box; }
         input[readonly] { background-color: #e5e5ea; color: #3a3a3c; border-color: #d1d1d6; cursor: not-allowed; }
-        .btn-submit { display: block; width: 100%; padding: 14px; background-color: #34c759; color: white; border: none; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: pointer; margin-top: 20px; margin-bottom: 25px; }
+        .btn-submit { display: block; width: 100%; padding: 14px; background-color: #34c759; color: white; border: none; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: pointer; margin-top: 20px; margin-bottom: 10px; }
         .btn-submit:hover { background-color: #28a745; }
+        .btn-export { display: block; width: 100%; padding: 12px; background-color: #007aff; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-bottom: 25px; }
+        .btn-export:hover { background-color: #0056b3; }
         .highlight { font-weight: bold; color: #ff3b30; }
         .chart-container { background: white; padding: 12px; border-radius: 8px; border: 1px solid #d1d1d6; margin-top: 10px; position: relative; height: 280px; }
         .table-container { overflow-x: auto; margin-top: 10px; border-radius: 8px; border: 1px solid #d1d1d6; }
@@ -107,6 +109,7 @@
     </div>
 
     <button class="btn-submit" id="btn_save">💾 儲存今日紀錄</button>
+    <button class="btn-export" id="btn_export">📥 匯出 Excel (CSV 報表)</button>
 
     <div class="section-title">📈 歷史數據趨勢圖</div>
     <div class="chart-container">
@@ -161,8 +164,9 @@ document.addEventListener('DOMContentLoaded', () => {
     renderHistoryTable();
     renderChart();
 
-    // 5. 綁定儲存按鈕事件
+    // 5. 綁定按鈕事件
     document.getElementById('btn_save').addEventListener('click', saveData);
+    document.getElementById('btn_export').addEventListener('click', exportToCSV);
 });
 
 // 核心計算邏輯
@@ -211,7 +215,6 @@ function saveData() {
         return;
     }
 
-    // 收集被勾選的瓶頸原因
     const selectedBottlenecks = [];
     document.querySelectorAll('input[name="bottleneck"]:checked').forEach(cb => {
         selectedBottlenecks.push(cb.value);
@@ -267,10 +270,8 @@ function renderHistoryTable() {
     history.forEach(item => {
         const tr = document.createElement('tr');
         
-        // 處理瓶頸欄位的顯示按鈕
         let bottleneckHTML = '<span style="color: #8e8e93;">無異常</span>';
         if (item.bottlenecks && item.bottlenecks.length > 0) {
-            // 將陣列轉成字串供跳窗使用，並用 JSON 避免引號衝突
             const bStr = JSON.stringify(item.bottlenecks).replace(/"/g, '&quot;');
             bottleneckHTML = `<button class="btn-view" onclick='showBottlenecks("${item.date}", ${bStr})'>⚠️ 查看(${item.bottlenecks.length})</button>`;
         }
@@ -311,6 +312,51 @@ function deleteRecord(date) {
         renderHistoryTable();
         renderChart();
     }
+}
+
+// 匯出 Excel (CSV 格式) 函式
+function exportToCSV() {
+    const history = getStorageData();
+    if (history.length === 0) {
+        alert("目前沒有歷史紀錄可以匯出！");
+        return;
+    }
+
+    // 依日期舊到新排序匯出
+    history.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    // CSV 欄位標題 (使用 \uFEFF 讓 Excel 開啟時支援 UTF-8 中文不亂碼)
+    let csvContent = "\uFEFF日期,昨日剩單,今日新給單,應完成總計,實際完成,未完成剩單,消化率,急件次數,進板車次,廢料車次,堆高機油量,影響瓶頸原因\n";
+
+    history.forEach(item => {
+        const bottlenecksStr = (item.bottlenecks && item.bottlenecks.length > 0) ? item.bottlenecks.join(';') : '無';
+        
+        const row = [
+            item.date,
+            item.prevRemains,
+            item.todayGiven,
+            item.totalExpected,
+            item.todayDone,
+            item.todayRemains,
+            item.digestionRate,
+            item.rushOrders,
+            item.incomingTrucks,
+            item.wasteTrucks,
+            item.forkliftFuel,
+            `"${bottlenecksStr}"` // 用引號包覆避免原因中的逗號干擾格式
+        ];
+        csvContent += row.join(",") + "\n";
+    });
+
+    // 建立 Blob 並觸發下載
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `板材倉儲紀錄_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 }
 
 // 繪製或更新趨勢圖
