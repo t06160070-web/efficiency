@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>板材倉儲紀錄-手機版</title>
+    <!-- 引入 Chart.js 圖表庫 -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f2f2f7; margin: 0; padding: 12px; color: #1c1c1e; }
+        .container { max-width: 100%; background: white; padding: 16px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); box-sizing: border-box; }
+        h2 { text-align: center; color: #1c1c1e; font-size: 20px; margin: 10px 0 20px 0; }
+        .section-title { font-weight: bold; color: #007aff; border-left: 4px solid #007aff; padding-left: 8px; margin-top: 22px; margin-bottom: 12px; font-size: 16px; }
+        .form-group { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; background: #f8f8fa; padding: 10px 12px; border-radius: 8px; }
+        label { font-weight: 600; font-size: 15px; flex: 1; }
+        input[type="number"], input[type="date"], select { width: 110px; padding: 8px; border: 1px solid #d1d1d6; border-radius: 6px; text-align: center; font-size: 16px; background: white; -webkit-appearance: none; box-sizing: border-box; }
+        input[readonly] { background-color: #e5e5ea; color: #3a3a3c; border-color: #d1d1d6; cursor: not-allowed; }
+        .btn-submit { display: block; width: 100%; padding: 14px; background-color: #34c759; color: white; border: none; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: pointer; margin-top: 20px; margin-bottom: 25px; }
+        .btn-submit:hover { background-color: #28a745; }
+        .highlight { font-weight: bold; color: #ff3b30; }
+        .chart-container { background: white; padding: 12px; border-radius: 8px; border: 1px solid #d1d1d6; margin-top: 10px; position: relative; height: 280px; }
+        .table-container { overflow-x: auto; margin-top: 10px; border-radius: 8px; border: 1px solid #d1d1d6; }
+        table { width: 100%; border-collapse: collapse; background: white; font-size: 13px; min-width: 650px; }
+        th, td { padding: 12px 8px; text-align: center; border-bottom: 1px solid #e5e5ea; }
+        th { background-color: #1c1c1e; color: white; font-weight: 600; }
+        tr:last-child td { border-bottom: none; }
+        .btn-delete { background-color: #ff3b30; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 12px; cursor: pointer; }
+        .no-data { text-align: center; color: #8e8e93; padding: 20px; font-style: italic; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>📊 板材倉儲紀錄 (手機優化版)</h2>
+    
+    <div class="section-title">📅 填表日期</div>
+    <div class="form-group" style="background: none; padding: 0;">
+        <input type="date" id="log_date" style="width: 100%; height: 44px; text-align: left; padding-left: 12px;">
+    </div>
+
+    <div class="section-title">1. 訂單與單據追蹤</div>
+    <div class="form-group">
+        <label>昨日未完成剩單：</label>
+        <input type="number" id="prev_remains" value="0" min="0" inputmode="numeric">
+    </div>
+    <div class="form-group">
+        <label>今日新給單數：</label>
+        <input type="number" id="today_given" value="0" min="0" inputmode="numeric">
+    </div>
+    <div class="form-group" style="background: #e5e5ea;">
+        <label>今日應完成總計：</label>
+        <input type="number" id="total_expected" value="0" readonly>
+    </div>
+    <div class="form-group">
+        <label>今日實際完成單：</label>
+        <input type="number" id="today_done" value="0" min="0" inputmode="numeric">
+    </div>
+    <div class="form-group">
+        <label class="highlight">今日未完成剩單：</label>
+        <input type="number" id="today_remains" value="0" class="highlight" readonly>
+    </div>
+    <div class="form-group">
+        <label style="color: #34c759;">今日訂單消化率：</label>
+        <input type="text" id="digestion_rate" value="0%" style="color: #34c759; font-weight: bold; background: none; border: none; width: 80px;" readonly>
+    </div>
+    <div class="form-group" style="border: 1px solid #ff9500; background: #fff9f0;">
+        <label style="color: #ff9500;">🚨 現備急件次數：</label>
+        <input type="number" id="rush_orders" value="0" min="0" inputmode="numeric">
+    </div>
+
+    <div class="section-title">2. 物流量能與設備點檢</div>
+    <div class="form-group">
+        <label>今日進板車次 (趟)：</label>
+        <input type="number" id="incoming_trucks" value="0" min="0" inputmode="numeric">
+    </div>
+    <div class="form-group">
+        <label>廢料板車次 (趟)：</label>
+        <input type="number" id="waste_trucks" value="0" min="0" inputmode="numeric">
+    </div>
+    <div class="form-group">
+        <label>⛽ 堆高機油量點檢：</label>
+        <select id="forklift_fuel" style="width: 130px;">
+            <option value="滿油(100%)">滿油 (100%)</option>
+            <option value="充足(75%)">充足 (75%)</option>
+            <option value="半油(50%)">半油 (50%)</option>
+            <option value="偏低(25%)">偏低 (25%) ⚠️</option>
+            <option value="需加油">請立即加油 ❌</option>
+        </select>
+    </div>
+
+    <button class="btn-submit" id="btn_save">💾 儲存今日紀錄</button>
+
+    <div class="section-title">📈 歷史數據趨勢圖</div>
+    <div class="chart-container">
+        <canvas id="efficiencyChart"></canvas>
+    </div>
+
+    <div class="section-title">📋 歷史效率紀錄 (橫滑檢視)</div>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>日期</th>
+                    <th>昨日剩</th>
+                    <th>新給單</th>
+                    <th>已完成</th>
+                    <th>未完剩</th>
+                    <th>消化率</th>
+                    <th>急件次</th>
+                    <th>進/廢車</th>
+                    <th>油量</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="history_tbody">
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+let myChart = null; // 儲存圖表實體
+
+document.addEventListener('DOMContentLoaded', () => {
+    // 1. 自動帶入當地正確日期
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    document.getElementById('log_date').value = `${year}-${month}-${day}`;
+
+    // 2. 自動載入上一筆的未完成剩單
+    loadLastRemains();
+
+    // 3. 綁定即時計算事件
+    ['prev_remains', 'today_given', 'today_done'].forEach(id => {
+        document.getElementById(id).addEventListener('input', calculateEfficiency);
+    });
+
+    // 4. 初始化計算、表格與圖表
+    calculateEfficiency();
+    renderHistoryTable();
+    renderChart();
+
+    // 5. 綁定儲存按鈕事件
+    document.getElementById('btn_save').addEventListener('click', saveData);
+});
+
+// 核心計算邏輯
+function calculateEfficiency() {
+    const prevRemains = parseInt(document.getElementById('prev_remains').value) || 0;
+    const todayGiven = parseInt(document.getElementById('today_given').value) || 0;
+    const todayDone = parseInt(document.getElementById('today_done').value) || 0;
+
+    const totalExpected = prevRemains + todayGiven;
+    document.getElementById('total_expected').value = totalExpected;
+
+    let todayRemains = totalExpected - todayDone;
+    if (todayRemains < 0) todayRemains = 0; 
+    document.getElementById('today_remains').value = todayRemains;
+
+    let rate = 0;
+    if (totalExpected > 0) {
+        rate = Math.round((todayDone / totalExpected) * 100);
+    }
+    document.getElementById('digestion_rate').value = `${rate}%`;
+}
+
+// 自動讀取最後一次的賸餘訂單數
+function loadLastRemains() {
+    const history = getStorageData();
+    if (history.length > 0) {
+        history.sort((a, b) => new Date(b.date) - new Date(b.date));
+        document.getElementById('prev_remains').value = history[0].todayRemains;
+    }
+}
+
+// 取得 LocalStorage 資料共用函式
+function getStorageData() {
+    try {
+        return JSON.parse(localStorage.getItem('warehouse_logs')) || [];
+    } catch (e) {
+        return [];
+    }
+}
+
+// 儲存資料到 LocalStorage
+function saveData() {
+    const date = document.getElementById('log_date').value;
+    if (!date) {
+        alert("請選擇填表日期！");
+        return;
+    }
+
+    const record = {
+        date,
+        prevRemains: parseInt(document.getElementById('prev_remains').value) || 0,
+        todayGiven: parseInt(document.getElementById('today_given').value) || 0,
+        totalExpected: parseInt(document.getElementById('total_expected').value) || 0,
+        todayDone: parseInt(document.getElementById('today_done').value) || 0,
+        todayRemains: parseInt(document.getElementById('today_remains').value) || 0,
+        digestionRate: document.getElementById('digestion_rate').value,
+        rushOrders: parseInt(document.getElementById('rush_orders').value) || 0,
+        incomingTrucks: parseInt(document.getElementById('incoming_trucks').value) || 0,
+        wasteTrucks: parseInt(document.getElementById('waste_trucks').value) || 0,
+        forkliftFuel: document.getElementById('forklift_fuel').value
+    };
+
+    let history = getStorageData();
+    
+    const existingIndex = history.findIndex(item => item.date === date);
+    if (existingIndex !== -1) {
+        if (!confirm(`${date} 的紀錄已存在，是否要覆蓋更新？`)) {
+            return;
+        }
+        history[existingIndex] = record;
+    } else {
+        history.push(record);
+    }
+
+    localStorage.setItem('warehouse_logs', JSON.stringify(history));
+    alert("儲存成功！已更新至下方歷史清單與趨勢圖。");
+    
+    renderHistoryTable();
+    renderChart();
+}
+
+// 渲染歷史紀錄清單表格
+function renderHistoryTable() {
+    const history = getStorageData();
+    const tbody = document.getElementById('history_tbody');
+    tbody.innerHTML = "";
+
+    if (history.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="10" class="no-data">目前尚無歷史紀錄</td></tr>`;
+        return;
+    }
+
+    history.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    history.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td style="font-weight:bold;">${item.date}</td>
+            <td>${item.prevRemains}</td>
+            <td>${item.todayGiven}</td>
+            <td>${item.todayDone}</td>
+            <td class="highlight">${item.todayRemains}</td>
+            <td style="color:#34c759; font-weight:bold;">${item.digestionRate}</td>
+            <td style="color:#ff9500; font-weight:bold;">${item.rushOrders}</td>
+            <td>${item.incomingTrucks}/${item.wasteTrucks}</td>
+            <td>${item.forkliftFuel}</td>
+            <td><button class="btn-delete" data-date="${item.date}">刪除</button></td>
+        `;
+        
+        tr.querySelector('.btn-delete').addEventListener('click', (e) => {
+            deleteRecord(e.target.getAttribute('data-date'));
+        });
+
+        tbody.appendChild(tr);
+    });
+}
+
+// 刪除特定日期的紀錄
+function deleteRecord(date) {
+    if (confirm(`確定要刪除 ${date} 的這筆紀錄嗎？`)) {
+        let history = getStorageData();
+        history = history.filter(item => item.date !== date);
+        localStorage.setItem('warehouse_logs', JSON.stringify(history));
+        renderHistoryTable();
+        renderChart();
+    }
+}
+
+// 繪製或更新趨勢圖
+function renderChart() {
+    const history = getStorageData();
+    const ctx = document.getElementById('efficiencyChart').getContext('2d');
+
+    // 依日期舊到新排序，確保圖表從左到右時間軸正確
+    history.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    const labels = history.map(item => item.date);
+    const expectedData = history.map(item => item.totalExpected);
+    const doneData = history.map(item => item.todayDone);
+    const remainsData = history.map(item => item.todayRemains);
+
+    if (myChart) {
+        myChart.destroy(); // 銷毀舊圖表以防疊加報錯
+    }
+
+    myChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: '應完成總計',
+                    data: expectedData,
+                    borderColor: '#007aff',
+                    backgroundColor: '#007aff',
+                    tension: 0.1
+                },
+                {
+                    label: '實際完成',
+                    data: doneData,
+                    borderColor: '#34c759',
+                    backgroundColor: '#34c759',
+                    tension: 0.1
+                },
+                {
+                    label: '未完成剩單',
+                    data: remainsData,
+                    borderColor: '#ff3b30',
+                    backgroundColor: '#ff3b30',
+                    tension: 0.1
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+}
+</script>
+
+</body>
+</html>
