@@ -25,6 +25,7 @@
         th { background-color: #1c1c1e; color: white; font-weight: 600; }
         tr:last-child td { border-bottom: none; }
         .btn-delete { background-color: #ff3b30; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 12px; cursor: pointer; }
+        .btn-view { background-color: #ff9500; color: white; border: none; padding: 6px 10px; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: bold; }
         .no-data { text-align: center; color: #8e8e93; padding: 20px; font-style: italic; }
     </style>
 </head>
@@ -88,6 +89,23 @@
         </select>
     </div>
 
+    <!-- 影響瓶頸原因勾選區 -->
+    <div class="section-title">⚠️ 今日影響與瓶頸原因 (可複選)</div>
+    <div class="form-group" style="background: #fff9f0; border: 1px solid #ff9500; display: flex; flex-wrap: wrap; gap: 10px; padding: 12px;">
+        <label style="font-weight: normal; font-size: 14px; flex: 1 1 40%; display: flex; align-items: center; gap: 6px;">
+            <input type="checkbox" name="bottleneck" value="單給太晚" style="width: 18px; height: 18px;"> 單給太晚
+        </label>
+        <label style="font-weight: normal; font-size: 14px; flex: 1 1 40%; display: flex; align-items: center; gap: 6px;">
+            <input type="checkbox" name="bottleneck" value="缺料" style="width: 18px; height: 18px;"> 缺料
+        </label>
+        <label style="font-weight: normal; font-size: 14px; flex: 1 1 40%; display: flex; align-items: center; gap: 6px;">
+            <input type="checkbox" name="bottleneck" value="人手不足" style="width: 18px; height: 18px;"> 人手不足
+        </label>
+        <label style="font-weight: normal; font-size: 14px; flex: 1 1 40%; display: flex; align-items: center; gap: 6px;">
+            <input type="checkbox" name="bottleneck" value="進板車太多" style="width: 18px; height: 18px;"> 進板車太多
+        </label>
+    </div>
+
     <button class="btn-submit" id="btn_save">💾 儲存今日紀錄</button>
 
     <div class="section-title">📈 歷史數據趨勢圖</div>
@@ -106,9 +124,10 @@
                     <th>已完成</th>
                     <th>未完剩</th>
                     <th>消化率</th>
-                    <th>急件次</th>
-                    <th>進/廢車</th>
+                    <th>急件</th>
+                    <th>車次(進/廢)</th>
                     <th>油量</th>
+                    <th>瓶頸原因</th>
                     <th>操作</th>
                 </tr>
             </thead>
@@ -170,7 +189,7 @@ function calculateEfficiency() {
 function loadLastRemains() {
     const history = getStorageData();
     if (history.length > 0) {
-        history.sort((a, b) => new Date(b.date) - new Date(b.date));
+        history.sort((a, b) => new Date(b.date) - new Date(a.date));
         document.getElementById('prev_remains').value = history[0].todayRemains;
     }
 }
@@ -192,6 +211,12 @@ function saveData() {
         return;
     }
 
+    // 收集被勾選的瓶頸原因
+    const selectedBottlenecks = [];
+    document.querySelectorAll('input[name="bottleneck"]:checked').forEach(cb => {
+        selectedBottlenecks.push(cb.value);
+    });
+
     const record = {
         date,
         prevRemains: parseInt(document.getElementById('prev_remains').value) || 0,
@@ -203,7 +228,8 @@ function saveData() {
         rushOrders: parseInt(document.getElementById('rush_orders').value) || 0,
         incomingTrucks: parseInt(document.getElementById('incoming_trucks').value) || 0,
         wasteTrucks: parseInt(document.getElementById('waste_trucks').value) || 0,
-        forkliftFuel: document.getElementById('forklift_fuel').value
+        forkliftFuel: document.getElementById('forklift_fuel').value,
+        bottlenecks: selectedBottlenecks
     };
 
     let history = getStorageData();
@@ -232,7 +258,7 @@ function renderHistoryTable() {
     tbody.innerHTML = "";
 
     if (history.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="10" class="no-data">目前尚無歷史紀錄</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="11" class="no-data">目前尚無歷史紀錄</td></tr>`;
         return;
     }
 
@@ -240,6 +266,15 @@ function renderHistoryTable() {
 
     history.forEach(item => {
         const tr = document.createElement('tr');
+        
+        // 處理瓶頸欄位的顯示按鈕
+        let bottleneckHTML = '<span style="color: #8e8e93;">無異常</span>';
+        if (item.bottlenecks && item.bottlenecks.length > 0) {
+            // 將陣列轉成字串供跳窗使用，並用 JSON 避免引號衝突
+            const bStr = JSON.stringify(item.bottlenecks).replace(/"/g, '&quot;');
+            bottleneckHTML = `<button class="btn-view" onclick='showBottlenecks("${item.date}", ${bStr})'>⚠️ 查看(${item.bottlenecks.length})</button>`;
+        }
+
         tr.innerHTML = `
             <td style="font-weight:bold;">${item.date}</td>
             <td>${item.prevRemains}</td>
@@ -250,6 +285,7 @@ function renderHistoryTable() {
             <td style="color:#ff9500; font-weight:bold;">${item.rushOrders}</td>
             <td>${item.incomingTrucks}/${item.wasteTrucks}</td>
             <td>${item.forkliftFuel}</td>
+            <td>${bottleneckHTML}</td>
             <td><button class="btn-delete" data-date="${item.date}">刪除</button></td>
         `;
         
@@ -259,6 +295,11 @@ function renderHistoryTable() {
 
         tbody.appendChild(tr);
     });
+}
+
+// 彈出視窗顯示當日瓶頸原因
+function showBottlenecks(date, bottlenecks) {
+    alert(`📅 ${date} 記錄的影響瓶頸原因：\n\n・ ` + bottlenecks.join('\n・ '));
 }
 
 // 刪除特定日期的紀錄
@@ -277,7 +318,6 @@ function renderChart() {
     const history = getStorageData();
     const ctx = document.getElementById('efficiencyChart').getContext('2d');
 
-    // 依日期舊到新排序，確保圖表從左到右時間軸正確
     history.sort((a, b) => new Date(a.date) - new Date(b.date));
 
     const labels = history.map(item => item.date);
@@ -286,7 +326,7 @@ function renderChart() {
     const remainsData = history.map(item => item.todayRemains);
 
     if (myChart) {
-        myChart.destroy(); // 銷毀舊圖表以防疊加報錯
+        myChart.destroy();
     }
 
     myChart = new Chart(ctx, {
