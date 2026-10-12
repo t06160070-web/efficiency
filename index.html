@@ -15,7 +15,12 @@
         label { font-weight: 600; font-size: 15px; flex: 1; }
         input[type="number"], input[type="date"], select { width: 110px; padding: 8px; border: 1px solid #d1d1d6; border-radius: 6px; text-align: center; font-size: 16px; background: white; -webkit-appearance: none; box-sizing: border-box; }
         input[readonly] { background-color: #e5e5ea; color: #3a3a3c; border-color: #d1d1d6; cursor: not-allowed; }
-        .btn-submit { display: block; width: 100%; padding: 14px; background-color: #34c759; color: white; border: none; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: pointer; margin-top: 20px; margin-bottom: 10px; }
+        
+        /* 編輯狀態提示條 */
+        #edit_notice { display: none; background: #fff3cd; color: #856404; padding: 10px; border-radius: 8px; margin-bottom: 15px; font-size: 14px; text-align: center; border: 1px solid #ffeeba; }
+        #edit_notice a { color: #533f03; font-weight: bold; text-decoration: underline; cursor: pointer; margin-left: 8px; }
+
+        .btn-submit { display: block; width: 100%; padding: 14px; background-color: #34c759; color: white; border: none; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: pointer; margin-top: 15px; margin-bottom: 10px; }
         .btn-submit:hover { background-color: #28a745; }
         .btn-export { display: block; width: 100%; padding: 12px; background-color: #007aff; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-bottom: 25px; }
         .btn-export:hover { background-color: #0056b3; }
@@ -38,6 +43,12 @@
 <div class="container">
     <h2>📊 板材倉儲紀錄 (手機優化版)</h2>
     
+    <!-- 正在修改的提示橫幅 -->
+    <div id="edit_notice">
+        ⚠️ 目前正在修改 <span id="editing_date_text"></span> 的紀錄
+        <a onclick="cancelEdit()">[點此取消]</a>
+    </div>
+
     <div class="section-title">📅 填表日期</div>
     <div class="form-group" style="background: none; padding: 0;">
         <input type="date" id="log_date" style="width: 100%; height: 44px; text-align: left; padding-left: 12px;">
@@ -146,13 +157,7 @@
 let myChart = null;
 
 document.addEventListener('DOMContentLoaded', () => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    document.getElementById('log_date').value = `${year}-${month}-${day}`;
-
-    loadLastRemains();
+    resetToToday();
 
     ['prev_remains', 'today_given', 'today_done'].forEach(id => {
         document.getElementById(id).addEventListener('input', calculateEfficiency);
@@ -165,6 +170,24 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn_save').addEventListener('click', saveData);
     document.getElementById('btn_export').addEventListener('click', exportToCSV);
 });
+
+// 重設為今天並自動抓取最後一筆剩單
+function resetToToday() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    document.getElementById('log_date').value = `${year}-${month}-${day}`;
+    document.getElementById('log_date').disabled = false;
+
+    // 隱藏編輯提示
+    document.getElementById('edit_notice').style.display = 'none';
+    
+    // 清空瓶頸勾選
+    document.querySelectorAll('input[name="bottleneck"]').forEach(cb => cb.checked = false);
+
+    loadLastRemains();
+}
 
 function calculateEfficiency() {
     const prevRemains = parseInt(document.getElementById('prev_remains').value) || 0;
@@ -185,11 +208,13 @@ function calculateEfficiency() {
     document.getElementById('digestion_rate').value = `${rate}%`;
 }
 
+// 自動讀取最後一次的賸餘訂單數 (避免重複疊加)
 function loadLastRemains() {
     const history = getStorageData();
     if (history.length > 0) {
-        history.sort((a, b) => new Date(b.date) - new Date(a.date));
-        document.getElementById('prev_remains').value = history[0].todayRemains;
+        // 依日期舊到新排序，找最新的一筆
+        history.sort((a, b) => new Date(a.date) - new Date(b.date));
+        document.getElementById('prev_remains').value = history[history.length - 1].todayRemains;
     }
 }
 
@@ -232,9 +257,7 @@ function saveData() {
     
     const existingIndex = history.findIndex(item => item.date === date);
     if (existingIndex !== -1) {
-        if (!confirm(`${date} 的紀錄已存在，是否要覆蓋更新？`)) {
-            return;
-        }
+        // 如果是正在修改既有日期，直接覆蓋，不提示多餘確認
         history[existingIndex] = record;
     } else {
         history.push(record);
@@ -243,6 +266,7 @@ function saveData() {
     localStorage.setItem('warehouse_logs', JSON.stringify(history));
     alert("儲存成功！");
     
+    resetToToday();
     renderHistoryTable();
     renderChart();
 }
@@ -298,6 +322,9 @@ function editRecord(date) {
     if (!record) return;
 
     document.getElementById('log_date').value = record.date;
+    // 修改舊紀錄時鎖定日期欄位，避免誤改日期變成新增
+    document.getElementById('log_date').disabled = true;
+
     document.getElementById('prev_remains').value = record.prevRemains;
     document.getElementById('today_given').value = record.todayGiven;
     document.getElementById('today_done').value = record.todayDone;
@@ -306,15 +333,21 @@ function editRecord(date) {
     document.getElementById('waste_trucks').value = record.wasteTrucks;
     document.getElementById('forklift_fuel').value = record.forkliftFuel;
 
-    // 還原勾選狀態
     document.querySelectorAll('input[name="bottleneck"]').forEach(cb => {
         cb.checked = record.bottlenecks && record.bottlenecks.includes(cb.value);
     });
 
     calculateEfficiency();
 
-    // 畫面滑動回最上方方便直接修改
+    // 顯示取消修改提示並滑動到最上方
+    document.getElementById('editing_date_text').innerText = record.date;
+    document.getElementById('edit_notice').style.display = 'block';
     window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// 取消修改
+function cancelEdit() {
+    resetToToday();
 }
 
 function showBottlenecks(date, bottlenecks) {
@@ -326,6 +359,7 @@ function deleteRecord(date) {
         let history = getStorageData();
         history = history.filter(item => item.date !== date);
         localStorage.setItem('warehouse_logs', JSON.stringify(history));
+        resetToToday();
         renderHistoryTable();
         renderChart();
     }
