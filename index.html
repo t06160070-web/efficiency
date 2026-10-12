@@ -22,12 +22,14 @@
         .highlight { font-weight: bold; color: #ff3b30; }
         .chart-container { background: white; padding: 12px; border-radius: 8px; border: 1px solid #d1d1d6; margin-top: 10px; position: relative; height: 280px; }
         .table-container { overflow-x: auto; margin-top: 10px; border-radius: 8px; border: 1px solid #d1d1d6; }
-        table { width: 100%; border-collapse: collapse; background: white; font-size: 13px; min-width: 650px; }
-        th, td { padding: 12px 8px; text-align: center; border-bottom: 1px solid #e5e5ea; }
+        table { width: 100%; border-collapse: collapse; background: white; font-size: 13px; min-width: 700px; }
+        th, td { padding: 12px 6px; text-align: center; border-bottom: 1px solid #e5e5ea; }
         th { background-color: #1c1c1e; color: white; font-weight: 600; }
         tr:last-child td { border-bottom: none; }
-        .btn-delete { background-color: #ff3b30; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 12px; cursor: pointer; }
-        .btn-view { background-color: #ff9500; color: white; border: none; padding: 6px 10px; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: bold; }
+        .btn-action-group { display: flex; gap: 4px; justify-content: center; }
+        .btn-edit { background-color: #007aff; color: white; border: none; padding: 6px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: bold; }
+        .btn-delete { background-color: #ff3b30; color: white; border: none; padding: 6px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: bold; }
+        .btn-view { background-color: #ff9500; color: white; border: none; padding: 6px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: bold; }
         .no-data { text-align: center; color: #8e8e93; padding: 20px; font-style: italic; }
     </style>
 </head>
@@ -128,9 +130,9 @@
                     <th>未完剩</th>
                     <th>消化率</th>
                     <th>急件</th>
-                    <th>車次(進/廢)</th>
+                    <th>車次</th>
                     <th>油量</th>
-                    <th>瓶頸原因</th>
+                    <th>瓶頸</th>
                     <th>操作</th>
                 </tr>
             </thead>
@@ -141,35 +143,29 @@
 </div>
 
 <script>
-let myChart = null; // 儲存圖表實體
+let myChart = null;
 
 document.addEventListener('DOMContentLoaded', () => {
-    // 1. 自動帶入當地正確日期
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const day = String(now.getDate()).padStart(2, '0');
     document.getElementById('log_date').value = `${year}-${month}-${day}`;
 
-    // 2. 自動載入上一筆的未完成剩單
     loadLastRemains();
 
-    // 3. 綁定即時計算事件
     ['prev_remains', 'today_given', 'today_done'].forEach(id => {
         document.getElementById(id).addEventListener('input', calculateEfficiency);
     });
 
-    // 4. 初始化計算、表格與圖表
     calculateEfficiency();
     renderHistoryTable();
     renderChart();
 
-    // 5. 綁定按鈕事件
     document.getElementById('btn_save').addEventListener('click', saveData);
     document.getElementById('btn_export').addEventListener('click', exportToCSV);
 });
 
-// 核心計算邏輯
 function calculateEfficiency() {
     const prevRemains = parseInt(document.getElementById('prev_remains').value) || 0;
     const todayGiven = parseInt(document.getElementById('today_given').value) || 0;
@@ -189,7 +185,6 @@ function calculateEfficiency() {
     document.getElementById('digestion_rate').value = `${rate}%`;
 }
 
-// 自動讀取最後一次的賸餘訂單數
 function loadLastRemains() {
     const history = getStorageData();
     if (history.length > 0) {
@@ -198,7 +193,6 @@ function loadLastRemains() {
     }
 }
 
-// 取得 LocalStorage 資料共用函式
 function getStorageData() {
     try {
         return JSON.parse(localStorage.getItem('warehouse_logs')) || [];
@@ -207,7 +201,6 @@ function getStorageData() {
     }
 }
 
-// 儲存資料到 LocalStorage
 function saveData() {
     const date = document.getElementById('log_date').value;
     if (!date) {
@@ -248,7 +241,7 @@ function saveData() {
     }
 
     localStorage.setItem('warehouse_logs', JSON.stringify(history));
-    alert("儲存成功！已更新至下方歷史清單與趨勢圖。");
+    alert("儲存成功！");
     
     renderHistoryTable();
     renderChart();
@@ -270,10 +263,10 @@ function renderHistoryTable() {
     history.forEach(item => {
         const tr = document.createElement('tr');
         
-        let bottleneckHTML = '<span style="color: #8e8e93;">無異常</span>';
+        let bottleneckHTML = '<span style="color: #8e8e93;">無</span>';
         if (item.bottlenecks && item.bottlenecks.length > 0) {
             const bStr = JSON.stringify(item.bottlenecks).replace(/"/g, '&quot;');
-            bottleneckHTML = `<button class="btn-view" onclick='showBottlenecks("${item.date}", ${bStr})'>⚠️ 查看(${item.bottlenecks.length})</button>`;
+            bottleneckHTML = `<button class="btn-view" onclick='showBottlenecks("${item.date}", ${bStr})'>查看(${item.bottlenecks.length})</button>`;
         }
 
         tr.innerHTML = `
@@ -287,23 +280,47 @@ function renderHistoryTable() {
             <td>${item.incomingTrucks}/${item.wasteTrucks}</td>
             <td>${item.forkliftFuel}</td>
             <td>${bottleneckHTML}</td>
-            <td><button class="btn-delete" data-date="${item.date}">刪除</button></td>
+            <td>
+                <div class="btn-action-group">
+                    <button class="btn-edit" onclick="editRecord('${item.date}')">修改</button>
+                    <button class="btn-delete" onclick="deleteRecord('${item.date}')">刪除</button>
+                </div>
+            </td>
         `;
-        
-        tr.querySelector('.btn-delete').addEventListener('click', (e) => {
-            deleteRecord(e.target.getAttribute('data-date'));
-        });
-
         tbody.appendChild(tr);
     });
 }
 
-// 彈出視窗顯示當日瓶頸原因
+// 點擊修改：將該筆資料回填至上方表單
+function editRecord(date) {
+    const history = getStorageData();
+    const record = history.find(item => item.date === date);
+    if (!record) return;
+
+    document.getElementById('log_date').value = record.date;
+    document.getElementById('prev_remains').value = record.prevRemains;
+    document.getElementById('today_given').value = record.todayGiven;
+    document.getElementById('today_done').value = record.todayDone;
+    document.getElementById('rush_orders').value = record.rushOrders;
+    document.getElementById('incoming_trucks').value = record.incomingTrucks;
+    document.getElementById('waste_trucks').value = record.wasteTrucks;
+    document.getElementById('forklift_fuel').value = record.forkliftFuel;
+
+    // 還原勾選狀態
+    document.querySelectorAll('input[name="bottleneck"]').forEach(cb => {
+        cb.checked = record.bottlenecks && record.bottlenecks.includes(cb.value);
+    });
+
+    calculateEfficiency();
+
+    // 畫面滑動回最上方方便直接修改
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
 function showBottlenecks(date, bottlenecks) {
     alert(`📅 ${date} 記錄的影響瓶頸原因：\n\n・ ` + bottlenecks.join('\n・ '));
 }
 
-// 刪除特定日期的紀錄
 function deleteRecord(date) {
     if (confirm(`確定要刪除 ${date} 的這筆紀錄嗎？`)) {
         let history = getStorageData();
@@ -314,7 +331,6 @@ function deleteRecord(date) {
     }
 }
 
-// 匯出 Excel (CSV 格式) 函式
 function exportToCSV() {
     const history = getStorageData();
     if (history.length === 0) {
@@ -322,33 +338,20 @@ function exportToCSV() {
         return;
     }
 
-    // 依日期舊到新排序匯出
     history.sort((a, b) => new Date(a.date) - new Date(b.date));
 
-    // CSV 欄位標題 (使用 \uFEFF 讓 Excel 開啟時支援 UTF-8 中文不亂碼)
     let csvContent = "\uFEFF日期,昨日剩單,今日新給單,應完成總計,實際完成,未完成剩單,消化率,急件次數,進板車次,廢料車次,堆高機油量,影響瓶頸原因\n";
 
     history.forEach(item => {
         const bottlenecksStr = (item.bottlenecks && item.bottlenecks.length > 0) ? item.bottlenecks.join(';') : '無';
-        
         const row = [
-            item.date,
-            item.prevRemains,
-            item.todayGiven,
-            item.totalExpected,
-            item.todayDone,
-            item.todayRemains,
-            item.digestionRate,
-            item.rushOrders,
-            item.incomingTrucks,
-            item.wasteTrucks,
-            item.forkliftFuel,
-            `"${bottlenecksStr}"` // 用引號包覆避免原因中的逗號干擾格式
+            item.date, item.prevRemains, item.todayGiven, item.totalExpected,
+            item.todayDone, item.todayRemains, item.digestionRate, item.rushOrders,
+            item.incomingTrucks, item.wasteTrucks, item.forkliftFuel, `"${bottlenecksStr}"`
         ];
         csvContent += row.join(",") + "\n";
     });
 
-    // 建立 Blob 並觸發下載
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -359,7 +362,6 @@ function exportToCSV() {
     document.body.removeChild(link);
 }
 
-// 繪製或更新趨勢圖
 function renderChart() {
     const history = getStorageData();
     const ctx = document.getElementById('efficiencyChart').getContext('2d');
@@ -380,37 +382,15 @@ function renderChart() {
         data: {
             labels: labels,
             datasets: [
-                {
-                    label: '應完成總計',
-                    data: expectedData,
-                    borderColor: '#007aff',
-                    backgroundColor: '#007aff',
-                    tension: 0.1
-                },
-                {
-                    label: '實際完成',
-                    data: doneData,
-                    borderColor: '#34c759',
-                    backgroundColor: '#34c759',
-                    tension: 0.1
-                },
-                {
-                    label: '未完成剩單',
-                    data: remainsData,
-                    borderColor: '#ff3b30',
-                    backgroundColor: '#ff3b30',
-                    tension: 0.1
-                }
+                { label: '應完成總計', data: expectedData, borderColor: '#007aff', backgroundColor: '#007aff', tension: 0.1 },
+                { label: '實際完成', data: doneData, borderColor: '#34c759', backgroundColor: '#34c759', tension: 0.1 },
+                { label: '未完成剩單', data: remainsData, borderColor: '#ff3b30', backgroundColor: '#ff3b30', tension: 0.1 }
             ]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            scales: {
-                y: {
-                    beginAtZero: true
-                }
-            }
+            scales: { y: { beginAtZero: true } }
         }
     });
 }
