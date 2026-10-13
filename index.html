@@ -51,7 +51,7 @@
 
     <div class="section-title">📅 填表日期</div>
     <div class="form-group" style="background: none; padding: 0;">
-        <input type="date" id="log_date" style="width: 100%; height: 44px; text-align: left; padding-left: 12px;">
+        <input type="date" id="log_date" style="width: 100%; height: 44px; text-align: left; padding-left: 12px;" onchange="handleDateChange()">
     </div>
 
     <div class="section-title">1. 訂單與單據追蹤</div>
@@ -171,13 +171,19 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn_export').addEventListener('click', exportToCSV);
 });
 
-// 重設為今天並自動抓取最後一筆剩單
-function resetToToday() {
+// 取得今天日期的字串 (YYYY-MM-DD)
+function getTodayDateString() {
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const day = String(now.getDate()).padStart(2, '0');
-    document.getElementById('log_date').value = `${year}-${month}-${day}`;
+    return `${year}-${month}-${day}`;
+}
+
+// 重設為今天，並進行智慧帶入
+function resetToToday() {
+    const todayStr = getTodayDateString();
+    document.getElementById('log_date').value = todayStr;
     document.getElementById('log_date').disabled = false;
 
     // 隱藏編輯提示
@@ -186,7 +192,71 @@ function resetToToday() {
     // 清空瓶頸勾選
     document.querySelectorAll('input[name="bottleneck"]').forEach(cb => cb.checked = false);
 
-    loadLastRemains();
+    // 智慧判斷：檢查「今天」是否已經有填過紀錄
+    const history = getStorageData();
+    const todayRecord = history.find(item => item.date === todayStr);
+
+    if (todayRecord) {
+        // 如果今天已經填過了，直接把今天的紀錄帶進來（方便續寫或查看）
+        fillFormWithRecord(todayRecord);
+    } else {
+        // 如果今天還沒填過，才去智慧抓取「上一筆紀錄的未完成剩單」作為昨日剩單
+        loadSmartPrevRemains();
+        // 清空其他欄位讓使用者填寫全新一天
+        document.getElementById('today_given').value = 0;
+        document.getElementById('today_done').value = 0;
+        document.getElementById('rush_orders').value = 0;
+        document.getElementById('incoming_trucks').value = 0;
+        document.getElementById('waste_trucks').value = 0;
+    }
+
+    calculateEfficiency();
+}
+
+// 智慧抓取上一筆剩單
+function loadSmartPrevRemains() {
+    const history = getStorageData();
+    if (history.length > 0) {
+        history.sort((a, b) => new Date(a.date) - new Date(b.date));
+        document.getElementById('prev_remains').value = history[history.length - 1].todayRemains;
+    } else {
+        document.getElementById('prev_remains').value = 0;
+    }
+}
+
+// 當使用者手動切換日期時的智慧反應
+function handleDateChange() {
+    const selectedDate = document.getElementById('log_date').value;
+    const history = getStorageData();
+    const existing = history.find(item => item.date === selectedDate);
+
+    if (existing) {
+        // 如果切到的日期剛好有舊紀錄，自動幫你帶入該日資料（兼具修改效果）
+        fillFormWithRecord(existing);
+        document.getElementById('editing_date_text').innerText = selectedDate;
+        document.getElementById('edit_notice').style.display = 'block';
+    } else {
+        // 如果切到全新日期，隱藏編輯提示
+        document.getElementById('edit_notice').style.display = 'none';
+        document.querySelectorAll('input[name="bottleneck"]').forEach(cb => cb.checked = false);
+    }
+}
+
+// 將紀錄填入表單
+function fillFormWithRecord(record) {
+    document.getElementById('prev_remains').value = record.prevRemains;
+    document.getElementById('today_given').value = record.todayGiven;
+    document.getElementById('today_done').value = record.todayDone;
+    document.getElementById('rush_orders').value = record.rushOrders;
+    document.getElementById('incoming_trucks').value = record.incomingTrucks;
+    document.getElementById('waste_trucks').value = record.wasteTrucks;
+    document.getElementById('forklift_fuel').value = record.forkliftFuel;
+
+    document.querySelectorAll('input[name="bottleneck"]').forEach(cb => {
+        cb.checked = record.bottlenecks && record.bottlenecks.includes(cb.value);
+    });
+
+    calculateEfficiency();
 }
 
 function calculateEfficiency() {
@@ -206,16 +276,6 @@ function calculateEfficiency() {
         rate = Math.round((todayDone / totalExpected) * 100);
     }
     document.getElementById('digestion_rate').value = `${rate}%`;
-}
-
-// 自動讀取最後一次的賸餘訂單數 (避免重複疊加)
-function loadLastRemains() {
-    const history = getStorageData();
-    if (history.length > 0) {
-        // 依日期舊到新排序，找最新的一筆
-        history.sort((a, b) => new Date(a.date) - new Date(b.date));
-        document.getElementById('prev_remains').value = history[history.length - 1].todayRemains;
-    }
 }
 
 function getStorageData() {
@@ -257,7 +317,6 @@ function saveData() {
     
     const existingIndex = history.findIndex(item => item.date === date);
     if (existingIndex !== -1) {
-        // 如果是正在修改既有日期，直接覆蓋，不提示多餘確認
         history[existingIndex] = record;
     } else {
         history.push(record);
@@ -315,33 +374,10 @@ function renderHistoryTable() {
     });
 }
 
-// 點擊修改：將該筆資料回填至上方表單
+// 點擊修改
 function editRecord(date) {
-    const history = getStorageData();
-    const record = history.find(item => item.date === date);
-    if (!record) return;
-
-    document.getElementById('log_date').value = record.date;
-    // 修改舊紀錄時鎖定日期欄位，避免誤改日期變成新增
-    document.getElementById('log_date').disabled = true;
-
-    document.getElementById('prev_remains').value = record.prevRemains;
-    document.getElementById('today_given').value = record.todayGiven;
-    document.getElementById('today_done').value = record.todayDone;
-    document.getElementById('rush_orders').value = record.rushOrders;
-    document.getElementById('incoming_trucks').value = record.incomingTrucks;
-    document.getElementById('waste_trucks').value = record.wasteTrucks;
-    document.getElementById('forklift_fuel').value = record.forkliftFuel;
-
-    document.querySelectorAll('input[name="bottleneck"]').forEach(cb => {
-        cb.checked = record.bottlenecks && record.bottlenecks.includes(cb.value);
-    });
-
-    calculateEfficiency();
-
-    // 顯示取消修改提示並滑動到最上方
-    document.getElementById('editing_date_text').innerText = record.date;
-    document.getElementById('edit_notice').style.display = 'block';
+    document.getElementById('log_date').value = date;
+    handleDateChange();
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
