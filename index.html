@@ -6,6 +6,8 @@
     <title>板材倉儲紀錄-手機版</title>
     <!-- 引入 Chart.js 圖表庫 -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- 引入 SheetJS (js-xlsx) 套件來真正匯出 .xlsx 檔案 -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f2f2f7; margin: 0; padding: 12px; color: #1c1c1e; }
         .container { max-width: 100%; background: white; padding: 16px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); box-sizing: border-box; }
@@ -119,7 +121,7 @@
     </div>
 
     <button class="btn-submit" id="btn_save">💾 儲存今日紀錄</button>
-    <button class="btn-export" id="btn_export">📥 匯出 Excel (CSV 報表)</button>
+    <button class="btn-export" id="btn_export">📥 匯出 Excel 檔案 (.xlsx)</button>
 
     <div class="section-title">📈 歷史數據趨勢圖</div>
     <div class="chart-container">
@@ -166,7 +168,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderChart();
 
     document.getElementById('btn_save').addEventListener('click', saveData);
-    document.getElementById('btn_export').addEventListener('click', exportToCSV);
+    document.getElementById('btn_export').addEventListener('click', exportToXLSX);
 });
 
 function getTodayDateString() {
@@ -243,7 +245,6 @@ function fillFormWithRecord(record) {
     calculateEfficiency();
 }
 
-// 核心計算與完成數防呆防護網
 function calculateEfficiency() {
     const prevRemains = parseInt(document.getElementById('prev_remains').value) || 0;
     const todayGiven = parseInt(document.getElementById('today_given').value) || 0;
@@ -253,10 +254,9 @@ function calculateEfficiency() {
     let todayDoneInput = document.getElementById('today_done');
     let todayDone = parseInt(todayDoneInput.value) || 0;
 
-    // 🛡️ 防呆防護網：實際完成量絕對不能大於應完成總計
     if (todayDone > totalExpected) {
         todayDone = totalExpected;
-        todayDoneInput.value = totalExpected; // 自動幫忙修正回最大上限
+        todayDoneInput.value = totalExpected;
     }
 
     let todayRemains = totalExpected - todayDone;
@@ -391,35 +391,41 @@ function deleteRecord(date) {
     }
 }
 
-function exportToCSV() {
+// 📥 真正匯出 .xlsx 檔案的完整邏輯
+function exportToXLSX() {
     const history = getStorageData();
     if (history.length === 0) {
         alert("目前沒有歷史紀錄可以匯出！");
         return;
     }
 
+    // 依日期舊到新排序
     history.sort((a, b) => new Date(a.date) - new Date(b.date));
 
-    let csvContent = "\uFEFF日期,昨日剩單,今日新給單,應完成總計,實際完成,未完成剩單,消化率,急件次數,進板車次,廢料車次,堆高機油量,影響瓶頸原因\n";
+    // 整理成 SheetJS 吃的資料格式 (Array of Objects / Rows)
+    const excelData = history.map(item => ({
+        "日期": item.date,
+        "昨日剩單": item.prevRemains,
+        "今日新給單": item.todayGiven,
+        "應完成總計": item.totalExpected,
+        "實際完成": item.todayDone,
+        "未完成剩單": item.todayRemains,
+        "訂單消化率": item.digestionRate,
+        "急件次數": item.rushOrders,
+        "進板車次(趟)": item.incomingTrucks,
+        "廢料車次(趟)": item.wasteTrucks,
+        "堆高機油量": item.forkliftFuel,
+        "影響瓶頸原因": (item.bottlenecks && item.bottlenecks.length > 0) ? item.bottlenecks.join(', ') : '無'
+    }));
 
-    history.forEach(item => {
-        const bottlenecksStr = (item.bottlenecks && item.bottlenecks.length > 0) ? item.bottlenecks.join(';') : '無';
-        const row = [
-            item.date, item.prevRemains, item.todayGiven, item.totalExpected,
-            item.todayDone, item.todayRemains, item.digestionRate, item.rushOrders,
-            item.incomingTrucks, item.wasteTrucks, item.forkliftFuel, `"${bottlenecksStr}"`
-        ];
-        csvContent += row.join(",") + "\n";
-    });
+    // 建立工作表 (Worksheet) 與工作簿 (Workbook)
+    const worksheet = XLSX.utils.json_to_sheet(excelData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "倉儲效率紀錄");
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `板材倉儲紀錄_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // 觸發下載真正的 .xlsx 檔案
+    const fileName = `板材倉儲紀錄_${new Date().toISOString().split('T')[0]}.xlsx`;
+    XLSX.writeFile(workbook, fileName);
 }
 
 function renderChart() {
