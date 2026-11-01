@@ -23,8 +23,11 @@
 
         .btn-submit { display: block; width: 100%; padding: 14px; background-color: #34c759; color: white; border: none; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: pointer; margin-top: 15px; margin-bottom: 10px; }
         .btn-submit:hover { background-color: #28a745; }
-        .btn-export { display: block; width: 100%; padding: 12px; background-color: #007aff; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-bottom: 25px; }
+        .btn-export { display: block; width: 100%; padding: 12px; background-color: #007aff; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-bottom: 10px; }
         .btn-export:hover { background-color: #0056b3; }
+        .btn-clear { display: block; width: 100%; padding: 10px; background-color: #e5e5ea; color: #ff3b30; border: 1px solid #ff3b30; border-radius: 8px; font-size: 15px; font-weight: bold; cursor: pointer; margin-bottom: 25px; }
+        .btn-clear:hover { background-color: #ffe5e5; }
+
         .highlight { font-weight: bold; color: #ff3b30; }
         .chart-container { background: white; padding: 12px; border-radius: 8px; border: 1px solid #d1d1d6; margin-top: 10px; position: relative; height: 280px; }
         .table-container { overflow-x: auto; margin-top: 10px; border-radius: 8px; border: 1px solid #d1d1d6; }
@@ -122,6 +125,7 @@
 
     <button class="btn-submit" id="btn_save">💾 儲存今日紀錄</button>
     <button class="btn-export" id="btn_export">📥 匯出 Excel 檔案 (.xlsx)</button>
+    <button class="btn-clear" id="btn_clear">🗑️ 清除所有歷史紀錄</button>
 
     <div class="section-title">📈 歷史數據趨勢圖</div>
     <div class="chart-container">
@@ -169,6 +173,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('btn_save').addEventListener('click', saveData);
     document.getElementById('btn_export').addEventListener('click', exportToXLSX);
+    document.getElementById('btn_clear').addEventListener('click', clearAllHistory);
 });
 
 function getTodayDateString() {
@@ -322,6 +327,26 @@ function saveData() {
     renderChart();
 }
 
+// 🗑️ 清除所有歷史紀錄功能
+function clearAllHistory() {
+    const history = getStorageData();
+    if (history.length === 0) {
+        alert("目前沒有任何歷史紀錄可以清除！");
+        return;
+    }
+
+    // 兩次確認機制，防止誤觸
+    if (confirm("⚠️ 警告：您即將清除所有的歷史紀錄與趨勢圖資料！\n\n建議您在清除前先點擊「📥 匯出 Excel」備份。\n\n確定要全部清空嗎？")) {
+        if (confirm("再次確認：清空後將無法復原，是否繼續？")) {
+            localStorage.removeItem('warehouse_logs');
+            resetToToday();
+            renderHistoryTable();
+            renderChart();
+            alert("歷史紀錄已全部清空！");
+        }
+    }
+}
+
 function renderHistoryTable() {
     const history = getStorageData();
     const tbody = document.getElementById('history_tbody');
@@ -391,7 +416,6 @@ function deleteRecord(date) {
     }
 }
 
-// 📥 真正匯出 .xlsx 檔案的完整邏輯
 function exportToXLSX() {
     const history = getStorageData();
     if (history.length === 0) {
@@ -399,10 +423,8 @@ function exportToXLSX() {
         return;
     }
 
-    // 依日期舊到新排序
     history.sort((a, b) => new Date(a.date) - new Date(b.date));
 
-    // 整理成 SheetJS 吃的資料格式 (Array of Objects / Rows)
     const excelData = history.map(item => ({
         "日期": item.date,
         "昨日剩單": item.prevRemains,
@@ -418,12 +440,10 @@ function exportToXLSX() {
         "影響瓶頸原因": (item.bottlenecks && item.bottlenecks.length > 0) ? item.bottlenecks.join(', ') : '無'
     }));
 
-    // 建立工作表 (Worksheet) 與工作簿 (Workbook)
     const worksheet = XLSX.utils.json_to_sheet(excelData);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "倉儲效率紀錄");
 
-    // 觸發下載真正的 .xlsx 檔案
     const fileName = `板材倉儲紀錄_${new Date().toISOString().split('T')[0]}.xlsx`;
     XLSX.writeFile(workbook, fileName);
 }
